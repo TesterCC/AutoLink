@@ -107,7 +107,9 @@ User Guide/
 logs/
 jobs/
 users/
+workspace/
 .idea/
+.beats/
 
 
 # 忽略列表

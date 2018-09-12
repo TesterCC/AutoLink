@@ -134,8 +134,19 @@ function do_task_list(){
     }
 }
 
+function do_in_array(str, array){
+    for(a in array){
+        if(array[a] == str){
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function onDblClick(node) {
     var category = node.attributes.category;
+    var steps = new Array("library", "variable", "step", "user_keyword");
     if(category == "case"){
         var suite = $('#project_tree').tree('getParent', node.target);
         var project = $('#project_tree').tree('getParent', suite.target);
@@ -144,6 +155,29 @@ function onDblClick(node) {
             suite.attributes['name'],
             node.attributes['name'],
             node.attributes['splitext']
+            ), "icon-editor");
+    }
+    else if(do_in_array(category, steps)){
+        var testcase = $('#project_tree').tree('getParent', node.target);
+        var suite = $('#project_tree').tree('getParent', testcase.target);
+        var project = $('#project_tree').tree('getParent', suite.target);
+        addTab(testcase.attributes['name'], '/editor/{0}/{1}/{2}{3}'.lym_format(
+            project.attributes['name'],
+            suite.attributes['name'],
+            testcase.attributes['name'],
+            testcase.attributes['splitext']
+            ), "icon-editor");
+    }
+    else if(category == "keyword"){
+        var step = $('#project_tree').tree('getParent', node.target);
+        var testcase = $('#project_tree').tree('getParent', step.target);
+        var suite = $('#project_tree').tree('getParent', testcase.target);
+        var project = $('#project_tree').tree('getParent', suite.target);
+        addTab(testcase.attributes['name'], '/editor/{0}/{1}/{2}{3}'.lym_format(
+            project.attributes['name'],
+            suite.attributes['name'],
+            testcase.attributes['name'],
+            testcase.attributes['splitext']
             ), "icon-editor");
     }
 }
@@ -197,6 +231,29 @@ function expand(){
     $('#project_tree').tree('expand',node.target);
 }
 
+
+function onBeforeExpand(node){
+    if(node){
+        var param = $("#project_tree").tree("options").queryParams;
+        param.category = node.attributes.category;
+        param.name = node.attributes.name;
+        if(node.attributes.category == "suite"){
+            var parent = $("#project_tree").tree('getParent', node.target);
+            param.project = parent.attributes.name;
+
+        }
+        else if(node.attributes.category == "case")
+        {
+            var suite = $("#project_tree").tree('getParent', node.target);
+            param.suite = suite.attributes.name;
+            var project = $("#project_tree").tree('getParent', suite.target);
+            param.project = project.attributes.name;
+            param.splitext = node.attributes.splitext;
+        }
+    }
+}
+
+
 function manage_project(win_id, ff_id, method){
     if(method == "create"){
         clear_form(ff_id);
@@ -211,9 +268,53 @@ function manage_project(win_id, ff_id, method){
     open_win(win_id);
 }
 
-function refresh_project_list(data){
+function refresh_workspace(data){
+    var param = $("#project_tree").tree("options").queryParams
+    param.category = "root";
+
     $('#project_tree').tree("reload");
 
+    show_msg('提示信息', data.msg);
+}
+
+function refresh_project_node(data){
+    var node = $('#project_tree').tree('getSelected');
+    if(node){
+        var param = $("#project_tree").tree("options").queryParams;
+        param.category = "project";
+        param.name = node.attributes.name;
+        $('#project_tree').tree('reload', node.target);
+    }
+    show_msg('提示信息', data.msg);
+}
+
+function refresh_suite_node(data){
+    var node = $('#project_tree').tree('getSelected');
+    if(node){
+        parent = $('#project_tree').tree('getParent', node.target);
+
+        var param = $("#project_tree").tree("options").queryParams;
+
+        param.category = "project";
+        param.name = parent.attributes.name;
+
+        $('#project_tree').tree("reload", parent.target);
+    }
+    show_msg('提示信息', data.msg);
+}
+
+function refresh_case_node(data){
+    var node = $('#project_tree').tree('getSelected');
+    if(node){
+        var param = $("#project_tree").tree("options").queryParams;
+        param.category = "suite";
+        var suite = $('#project_tree').tree('getParent', node.target);
+        param.suite = suite.attributes.name
+        var project = $("#project_tree").tree('getParent', suite.target);
+        param.project = project.attributes.name;
+
+        $('#project_tree').tree("reload", suite.target);
+    }
     show_msg('提示信息', data.msg);
 }
 
@@ -221,7 +322,7 @@ function create_project(win_id, ff_id){
     var data = $("#{0}".lym_format(ff_id)).serializeObject();
     data["method"] = "create";
 
-    do_ajax('post', '/api/v1/project/', data, refresh_project_list);
+    do_ajax('post', '/api/v1/project/', data, refresh_workspace);
 
     close_win(win_id);
 }
@@ -231,7 +332,7 @@ function rename_project(win_id, ff_id){
     var node = $('#project_tree').tree('getSelected');
     data["name"] = node.attributes['name'];
     data["method"] = "edit";
-    do_ajax('post', '/api/v1/project/', data, refresh_project_list);
+    do_ajax('post', '/api/v1/project/', data, refresh_workspace);
 
     close_win(win_id);
 }
@@ -246,7 +347,7 @@ function delete_project(){
                         "method": "delete"
                     };
 
-                do_ajax('post', "/api/v1/project/", data, refresh_project_list);
+                do_ajax('post', "/api/v1/project/", data, refresh_workspace);
             }
         });
     }
@@ -273,7 +374,7 @@ function create_suite(win_id, ff_id){
         data["method"] = "create";
         data["project_name"] = node.attributes['name'];
 
-        do_ajax('post', '/api/v1/suite/', data, refresh_project_list);
+        do_ajax('post', '/api/v1/suite/', data, refresh_project_node);
 
         close_win(win_id);
     }
@@ -287,7 +388,7 @@ function rename_suite(win_id, ff_id){
         data["name"] = node.attributes['name'];
         data["project_name"] = project.attributes['name'];
         data["method"] = "edit";
-        do_ajax('post', '/api/v1/suite/', data, refresh_project_list);
+        do_ajax('post', '/api/v1/suite/', data, refresh_suite_node);
 
         close_win(win_id);
     }
@@ -305,7 +406,7 @@ function delete_suite(){
                         "method": "delete"
                     };
 
-                do_ajax('post', "/api/v1/suite/", data, refresh_project_list);
+                do_ajax('post', "/api/v1/suite/", data, refresh_suite_node);
             }
         });
     }
@@ -335,7 +436,7 @@ function create_file(win_id, ff_id){
         data["suite_name"] = node.attributes['name'];
         data["project_name"] =  project.attributes['name'];
 
-        do_ajax('post', '/api/v1/case/', data, refresh_project_list);
+        do_ajax('post', '/api/v1/case/', data, refresh_suite_node);
 
         close_win(win_id);
     }
@@ -353,7 +454,7 @@ function rename_file(win_id, ff_id){
         data["project_name"] = project.attributes['name'];
         data["method"] = "edit";
 
-        do_ajax('post', '/api/v1/case/', data, refresh_project_list);
+        do_ajax('post', '/api/v1/case/', data, refresh_case_node);
 
         close_win(win_id);
     }
@@ -377,7 +478,7 @@ function delete_file(){
                             "method": "delete"
                         };
 
-                    do_ajax('post', "/api/v1/case/", data, refresh_project_list);
+                    do_ajax('post', "/api/v1/case/", data, refresh_case_node);
                 }
         });
     }
@@ -390,9 +491,10 @@ function do_upload(win_id, ff_id){
         $("#{0} input#path".lym_format(ff_id)).val("/{0}/{1}/".lym_format(project.attributes['name'], node.attributes['name']));
         $("#{0}".lym_format(ff_id)).form('submit', {
             success: function (result) {
-                $('#project_tree').tree('reload');
+                //var node = $('#project_tree').tree('getSelected');
                 var d = JSON.parse(result);
-                show_msg('提示信息', d.msg);
+                //show_msg('提示信息', d.msg);
+                refresh_suite_node(d);
                 close_win(win_id);
             }
         });
@@ -479,3 +581,30 @@ function clear_form(id){
     $('#{0}'.lym_format(id)).form('clear');
 }
 
+function load_smtp(data){
+    $("#edit_smtp_ff").form("load", data);
+    $("#edit_smtp_ff input#ssl").prop("checked", data["ssl"]);
+}
+
+function init_smtp_ff(){
+    var data = {"method": "smtp"};
+    do_ajax('get', '/api/v1/settings/', data, load_smtp);
+}
+
+function load_email(data){
+    $("#notify_ff").form("load", data);
+}
+
+function init_email_ff(name){
+    var data = {"method": "email", "project": name};
+    do_ajax('get', '/api/v1/settings/', data, load_email);
+}
+
+function do_smtp(win_id, ff_id){
+    var data = $("#{0}".lym_format(ff_id)).serializeObject();
+    data["method"] = "smtp";
+
+    do_ajax('post', '/api/v1/settings/', data, do_nop);
+
+    close_win(win_id);
+}

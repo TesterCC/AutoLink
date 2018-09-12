@@ -16,7 +16,11 @@ import json
 import os
 import codecs
 
+from robot.api import TestSuiteBuilder
+from robot.api import TestData, ResourceFile, TestCaseFile
+
 from utils.file import list_dir, mk_dirs, exists_path, rename_file, remove_dir, get_splitext
+from utils.resource import ICONS
 
 
 class Project(Resource):
@@ -112,10 +116,25 @@ class ProjectList(Resource):
     def __init__(self):
         self.parser = reqparse.RequestParser()
         self.parser.add_argument('name', type=str)
+        self.parser.add_argument('category', type=str, default="root")
+        self.parser.add_argument('project', type=str)
+        self.parser.add_argument('suite', type=str)
+        self.parser.add_argument('splitext', type=str)
         self.app = current_app._get_current_object()
 
     def get(self):
-        #args = self.parser.parse_args()
+        args = self.parser.parse_args()
+
+        if args["category"] == "root":
+            return get_projects(self.app, session["username"])
+        elif args["category"] == "project":
+            return get_suite_by_project(self.app, session["username"], args)
+        elif args["category"] == "suite":
+            return get_case_by_suite(self.app, session["username"], args)
+        elif args["category"] == "case":
+            return get_step_by_case(self.app, session["username"], args)
+
+        """
         projects = get_project_list(self.app, session['username'])
         children = []
         for p in projects:
@@ -123,6 +142,7 @@ class ProjectList(Resource):
             children.append({
                 "text": p["name"],
                 "iconCls": "icon-project",
+                "state": "closed",
                 "attributes": {
                     "name": p["name"],
                     "description": p["description"],
@@ -131,7 +151,7 @@ class ProjectList(Resource):
                 },
                 "children": detail
             })
-
+        
         return [{
             "text": session['username'],
             "iconCls": "icon-workspace",
@@ -139,6 +159,7 @@ class ProjectList(Resource):
                 "category": "root"
             },
             "children": children}]
+        """
 
 
 def create_project(app, username, project):
@@ -180,12 +201,13 @@ def remove_project(app, username, name):
 
 
 def get_project_list(app, username):
-    user_path = app.config["AUTO_HOME"] + "/users/" + username
-    if os.path.exists(user_path):
-        config = json.load(codecs.open(user_path + '/config.json', 'r', 'utf-8'))
-        data = config['data']
+    work_path = app.config["AUTO_HOME"] + "/workspace/" + username
+    if os.path.exists(work_path):
+        projects = list_dir(work_path)
+        if len(projects) > 1:
+            projects.sort()
 
-        return data
+            return projects
 
     return []
 
@@ -215,12 +237,9 @@ def get_project_detail(app, username, p_name):
                 icons = "icon-file-default"
 
             children.append({
-                "text": t,
-                "iconCls": icons,
+                "text": t, "iconCls": icons,
                 "attributes": {
-                    "name": text[0],
-                    "category": "case",
-                    "splitext": text[1]
+                    "name": text[0], "category": "case", "splitext": text[1]
                 }
             })
         if len(children) == 0:
@@ -228,14 +247,150 @@ def get_project_detail(app, username, p_name):
         else:
             icons = "icon-suite-open"
         projects.append({
-            "text": d,
-            "iconCls": icons,
+            "text": d, "iconCls": icons,
             "attributes": {
-                "name": d,
-                "category": "suite"
+                "name": d, "category": "suite"
             },
             "children": children
         })
 
     return projects
 
+
+def get_projects(app, username):
+    projects = get_project_list(app, username)
+    children = []
+    for p in projects:
+        children.append({
+            "text": p, "iconCls": "icon-project", "state": "closed",
+            "attributes": {
+                "name": p,  # "description": p["description"],
+                "category": "project",  # "boolean": p["boolean"]
+            },
+            "children": []
+        })
+
+    return [{
+        "text": session['username'], "iconCls": "icon-workspace",
+        "attributes": {
+            "category": "root"
+        },
+        "children": children}]
+
+
+def get_suite_by_project(app, username, args):
+    path = app.config["AUTO_HOME"] + "/workspace/" + username + "/" + args["name"]
+
+    suites = list_dir(path)
+    children = []
+    if len(suites) > 1:
+        suites.sort()
+    for d in suites:
+        cases = list_dir(path + "/" + d)
+        icons = "icon-suite"
+        if len(cases) > 1:
+            icons = "icon-suite-open"
+
+        children.append({
+            "text": d, "iconCls": icons, "state": "closed",
+            "attributes": {
+                "name": d, "category": "suite"
+            },
+            "children": []
+        })
+
+    return children
+
+
+def get_case_by_suite(app, username, args):
+    path = app.config["AUTO_HOME"] + "/workspace/" + username + "/%s/%s" % (args["project"], args["name"] )
+
+    cases = list_dir(path)
+    if len(cases) > 1:
+        cases.sort()
+    children = []
+    for t in cases:
+        text = get_splitext(t)
+        if text[1] in ICONS:
+            icons = ICONS[text[1]]
+        else:
+            icons = "icon-file-default"
+
+        if text[1] in (".robot"):
+            children.append({
+                "text": t, "iconCls": icons, "state": "closed",
+                "attributes": {
+                    "name": text[0], "category": "case", "splitext": text[1]
+                },
+                "children": []
+            })
+        else:
+            children.append({
+                "text": t, "iconCls": icons, "state": "open",
+                "attributes": {
+                    "name": text[0], "category": "case", "splitext": text[1]
+                }
+            })
+
+    return children
+
+
+def get_step_by_case(app, username, args):
+    print(args)
+    path = app.config["AUTO_HOME"] + "/workspace/" + username + "/%s/%s/%s%s" % (args["project"], args["suite"], args["name"], args["splitext"])
+
+    data = []
+    if args["splitext"] == ".robot":
+        data = get_case_data(path)
+
+    return data
+
+
+def get_case_data(path):
+    suite = TestSuiteBuilder().build(path)
+    children = []
+    if suite:
+        # add library
+        for i in suite.resource.imports:
+            children.append({
+                "text": i.name, "iconCls": "icon-library", "state": "open",
+                "attributes": {
+                    "name": i.name, "category": "library"
+                }
+            })
+
+        for v in suite.resource.variables:
+            children.append({
+                "text": v.name, "iconCls": "icon-variable", "state": "open",
+                "attributes": {
+                    "name": v.name, "category": "variable"
+                }
+            })
+
+        for t in suite.tests:
+            keys = []
+            for k in t.keywords:
+                keys.append({
+                    "text": k.name, "iconCls": "icon-keyword", "state": "open",
+                    "attributes": {
+                        "name": k.name, "category": "keyword"
+                    }
+                })
+
+            children.append({
+                "text": t.name, "iconCls": "icon-step", "state": "closed",
+                "attributes": {
+                    "name": t.name, "category": "step"
+                },
+                "children": keys
+            })
+
+        for v in suite.resource.keywords:
+            children.append({
+                "text": v.name, "iconCls": "icon-user-keyword", "state": "open",
+                "attributes": {
+                    "name": v.name, "category": "user_keyword"
+                }
+            })
+
+    return children

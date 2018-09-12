@@ -32,7 +32,10 @@ def index():
 
 @routes.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
-    return render_template('dashboard.html', username=session['username'])
+    if 'username' in session:
+        return render_template('dashboard.html', username=session['username'])
+    else:
+        return render_template('login.html')
 
 
 @routes.route('/tree_demo')
@@ -43,8 +46,11 @@ def tree_demo():
 @routes.route("/editor/<project>/<suite>/<case>")
 def editor(project, suite, case):
     t = get_splitext(case)
-    default = "editor.html"
-    if t[1] in (".bmp", ".jpg", ".jpeg", ".png", ".git"):
+
+    default = "default.html"
+    if t[1] in (".txt", ".robot", ".py", ".js"):
+        default = "editor.html"
+    elif t[1] in (".bmp", ".jpg", ".jpeg", ".png", ".gif"):
         default = "view_img.html"
 
     return render_template(default, project=project, suite=suite, case=case)
@@ -53,6 +59,11 @@ def editor(project, suite, case):
 @routes.route("/task_list/<name>")
 def task_list(name):
     return render_template('task_list.html', project=name)
+
+
+@routes.route("/scheduler/")
+def scheduler():
+    return render_template('scheduler.html')
 
 
 @routes.route("/user/")
@@ -69,6 +80,15 @@ def view_report(project, task):
     return send_file(job_path)
 
 
+@routes.route("/q_view_report/<username>/<project>/<task>")
+def q_view_report(username, project, task):
+    app = current_app._get_current_object()
+
+    job_path = app.config["AUTO_HOME"] + "/jobs/%s/%s/%s/log.html" % (username, project, task)
+
+    return send_file(job_path)
+
+
 @routes.route("/view_img")
 def view_img():
     args = request.args.to_dict()
@@ -80,3 +100,7 @@ def view_img():
 
     return False
 
+
+@routes.route("/welcome")
+def welcome():
+    return render_template("welcome.html")
